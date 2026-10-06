@@ -1,0 +1,477 @@
+{
+  "name": "Daily AI & Technology Intelligence Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -256,
+        16
+      ],
+      "id": "4aa2b626-28f0-4bb3-a8f8-158638699d8b",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://techcrunch.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        -800
+      ],
+      "id": "447ec18a-9c42-4428-ab95-6c5a9bae4f70",
+      "name": "RSS Read"
+    },
+    {
+      "parameters": {
+        "url": "https://www.xda-developers.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        -608
+      ],
+      "id": "9d05c983-dd9d-44cf-a595-1a7b3b0cca28",
+      "name": "RSS Read1"
+    },
+    {
+      "parameters": {
+        "numberInputs": 10
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        368,
+        -96
+      ],
+      "id": "bde62c68-a151-4130-a6d2-28a904658e15",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst seen = new Set();\n\nfunction cleanText(value) {\n  return String(value ?? \"\")\n    .replace(/<[^>]*>/g, \" \")\n    .replace(/\\s+/g, \" \")\n    .trim();\n}\n\nfunction getPublisher(url) {\n  const u = String(url || \"\").toLowerCase();\n\n  if (u.includes(\"techcrunch.com\")) return \"TechCrunch\";\n  if (u.includes(\"xda-developers.com\")) return \"XDA Developers\";\n  if (u.includes(\"androidauthority.com\")) return \"Android Authority\";\n  if (u.includes(\"9to5google.com\")) return \"9to5Google\";\n  if (u.includes(\"androidpolice.com\")) return \"Android Police\";\n  if (u.includes(\"howtogeek.com\")) return \"How-To Geek\";\n  if (u.includes(\"makeuseof.com\")) return \"MakeUseOf\";\n  if (u.includes(\"producthunt.com\")) return \"Product Hunt\";\n  if (u.includes(\"alternativeto.net\")) return \"AlternativeTo\";\n  if (u.includes(\"arstechnica.com\")) return \"Ars Technica\";\n\n  return \"Other\";\n}\n\nconst articles = [];\n\nfor (const item of items) {\n  const d = item.json;\n\n  const title = cleanText(d.title || d.name);\n\n  const description = cleanText(\n    d.contentSnippet ||\n    d.content ||\n    d.description ||\n    d.summary\n  ).slice(0, 800);\n\n  const url = String(\n    d.link ||\n    d.url ||\n    d.guid ||\n    \"\"\n  ).trim();\n\n  const published =\n    d.isoDate ||\n    d.pubDate ||\n    d.published ||\n    d.date ||\n    \"\";\n\n  if (!title || !url) continue;\n\n  if (seen.has(url)) continue;\n  seen.add(url);\n\n  articles.push({\n    title,\n    description,\n    url,\n    published,\n    source: getPublisher(url)\n  });\n}\n\n// Sort newest first\narticles.sort((a, b) => {\n  const aTime = new Date(a.published).getTime() || 0;\n  const bTime = new Date(b.published).getTime() || 0;\n  return bTime - aTime;\n});\n\n// Group by publisher\nconst groups = {};\n\nfor (const article of articles) {\n  if (!groups[article.source]) {\n    groups[article.source] = [];\n  }\n\n  groups[article.source].push(article);\n}\n\nconst selected = [];\nconst used = new Set();\n\nconst publishers = [\n  \"TechCrunch\",\n  \"XDA Developers\",\n  \"Android Authority\",\n  \"9to5Google\",\n  \"Android Police\",\n  \"How-To Geek\",\n  \"MakeUseOf\",\n  \"Product Hunt\",\n  \"AlternativeTo\",\n  \"Ars Technica\"\n];\n\n// First pass: one article from each publisher\nfor (const publisher of publishers) {\n  if (groups[publisher]?.length) {\n    const article = groups[publisher][0];\n\n    selected.push(article);\n    used.add(article.url);\n  }\n}\n\n// Second pass: add a second article from each publisher\nfor (const publisher of publishers) {\n  if (selected.length >= 15) break;\n\n  if (groups[publisher]?.length > 1) {\n    const article = groups[publisher][1];\n\n    if (!used.has(article.url)) {\n      selected.push(article);\n      used.add(article.url);\n    }\n  }\n}\n\n// Fill remaining slots with newest articles\nfor (const article of articles) {\n  if (selected.length >= 15) break;\n\n  if (!used.has(article.url)) {\n    selected.push(article);\n    used.add(article.url);\n  }\n}\n\n// Sort final 15 by publication time\nselected.sort((a, b) => {\n  const aTime = new Date(a.published).getTime() || 0;\n  const bTime = new Date(b.published).getTime() || 0;\n  return bTime - aTime;\n});\n\nreturn [\n  {\n    json: {\n      article_count: selected.length,\n      total_articles_received: items.length,\n      articles_after_cleaning: articles.length,\n      sources_available: Object.fromEntries(\n        Object.entries(groups).map(([source, list]) => [\n          source,\n          list.length\n        ])\n      ),\n      sources_used: [...new Set(selected.map(a => a.source))],\n      articles: selected\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        32
+      ],
+      "id": "8148a344-011b-43dc-8863-21a2ab2dac82",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert Technology Intelligence Analyst and professional technology newsletter writer.\n\nCreate a Daily AI & Technology Intelligence Report using ONLY the 15 articles supplied below.\n\nCRITICAL RULES\n\nUse ALL 15 supplied articles exactly once.\n\nDo not add, remove, merge, replace, or invent articles.\n\nThe final report MUST contain:\n\n1 Executive Summary\n5 Top 5 Highlights\n15 News Stories\n5 Key Takeaways\n\nThe 5 highlights MUST refer to stories from the 15 stories. They are NOT additional stories.\n\nSOURCE RULES\n\nUse ONLY the supplied title, description, source, url, and published date.\n\nNever use outside knowledge.\n\nNever browse.\n\nNever invent facts, statistics, capabilities, dates, companies, publications, or URLs.\n\nIf the description contains very little information, write a short conservative summary. Do not guess.\n\nIMPORTANT URL RULE:\n\nThe supplied URL may appear in this format:\n\n[https://example.com](https://example.com)\n\nWhen this happens, extract ONLY the URL inside the parentheses.\n\nThe final HTML href MUST contain the raw URL only:\n\n<a href=\"https://example.com\">Read original article</a>\n\nNEVER put [ ] or Markdown formatting inside href.\n\nCopy the supplied source exactly.\n\nREPORT DATE\n\nOctober 6, 2026\n\nWRITING RULES\n\nKeep the report concise.\n\nExecutive Summary: maximum 3 sentences.\n\nEach Highlight: maximum 2 sentences.\n\nEach Story:\n\nSummary: maximum 2 sentences.\nWhy It Matters: maximum 2 sentences.\n\nDo not invent implications that are not supported by the supplied article.\n\nFor deals, reviews, sponsored content, how-to articles, and ordinary consumer articles, describe them accurately without exaggerating their importance.\n\nCATEGORIES\n\nUse exactly one:\n\nAI\nAI Tools\nAI Apps\nML\nCybersecurity\nPrivacy\nSoftware\nProductivity\nAutomation\nDeveloper Tools\nOpen Source\nCloud\nHardware\nRobotics\nMobile\nWeb\nSemiconductors\nResearch\nRegulation\nEnterprise\nEmerging Technology\nIndustry News\nProduct Review\nDeals\n\nSTATUSES\n\nUse exactly one:\n\nBreaking\nMajor Update\nTrending\nNew\nSecurity\nResearch\nFunding\nUpdate\nNew Product\nProduct Review\nRegulation\nIndustry News\nDeal\nHow-to\n\nHTML ONLY\n\nReturn clean HTML only.\n\nNo Markdown.\nNo JSON.\nNo code fences.\nNo explanations outside HTML.\n\nUse this structure:\n\n<h1>Daily AI &amp; Technology Intelligence Report</h1>\n<p><strong>Date:</strong> October 6, 2026</p>\n\n<h2>Executive Summary</h2>\n<p>...</p>\n\n<h2>Top 5 Highlights</h2>\n<ol>\n<li><strong>...</strong><br>...</li>\n<li><strong>...</strong><br>...</li>\n<li><strong>...</strong><br>...</li>\n<li><strong>...</strong><br>...</li>\n<li><strong>...</strong><br>...</li>\n</ol>\n\n<h2>15 News Stories</h2>\n\n<h3>1. ARTICLE TITLE</h3>\n<p><strong>Summary:</strong> ...</p>\n<p><strong>Why It Matters:</strong> ...</p>\n<p><strong>Category:</strong> ...</p>\n<p><strong>Status:</strong> ...</p>\n<p><strong>Source:</strong> ...</p>\n<p><a href=\"EXACT RAW URL\">Read original article</a></p>\n\nContinue exactly through Story 15.\n\nThen:\n\n<h2>Key Takeaways</h2>\n<ul>\n<li>...</li>\n<li>...</li>\n<li>...</li>\n<li>...</li>\n<li>...</li>\n</ul>\n\nFINAL CHECK BEFORE ANSWERING\n\nSilently verify:\n\n- exactly 15 stories\n- stories numbered 1 through 15\n- no story 16\n- all supplied articles used exactly once\n- exactly 5 highlights\n- exactly 5 takeaways\n- every source copied exactly\n- every URL is the raw supplied URL\n- no Markdown links\n- no invented facts\n- no unsupported claims\n- valid HTML\n- HTML only\n\nARTICLES TO ANALYZE:\n\n{{ JSON.stringify($json.articles) }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        976,
+        32
+      ],
+      "id": "79be6a20-ccd5-4d8f-ad4f-011763e86c10",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "openrouter/free",
+        "options": {
+          "maxTokens": 12000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        224
+      ],
+      "id": "241b34e9-8d0b-4b2d-a557-0e8980d03081",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.androidauthority.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        -416
+      ],
+      "id": "f62a0f70-c897-42cd-adda-ba2e032684cb",
+      "name": "RSS Read2"
+    },
+    {
+      "parameters": {
+        "url": "https://9to5google.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        -224
+      ],
+      "id": "7b7b9ead-29f3-498b-b5b7-7b7a7fdeaf4a",
+      "name": "RSS Read3"
+    },
+    {
+      "parameters": {
+        "url": "https://www.androidpolice.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        16
+      ],
+      "id": "72dfc06f-60c7-4b21-a510-bea6b9dd9c8d",
+      "name": "RSS Read4"
+    },
+    {
+      "parameters": {
+        "url": "https://www.howtogeek.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        192
+      ],
+      "id": "1692d28a-03e7-45aa-ad29-2076812039e2",
+      "name": "RSS Read5"
+    },
+    {
+      "parameters": {
+        "url": "https://www.makeuseof.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        384
+      ],
+      "id": "46304a2f-069f-47db-948e-b6e7f24a87a5",
+      "name": "RSS Read6"
+    },
+    {
+      "parameters": {
+        "url": "https://www.producthunt.com/feed",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        576
+      ],
+      "id": "f0034001-34ca-4a0c-a67e-a2d8daec65e1",
+      "name": "RSS Read7"
+    },
+    {
+      "parameters": {
+        "url": "https://alternativeto.net/feeds/news/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        752
+      ],
+      "id": "3646f569-b6c8-4779-a010-1116e8340338",
+      "name": "RSS Read8"
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.arstechnica.com/arstechnica/index",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        944
+      ],
+      "id": "38ebef4e-5942-4e44-ae7f-68e407da7b25",
+      "name": "RSS Read9"
+    },
+    {
+      "parameters": {
+        "fromEmail": "YOUR_EMAIL@example.com",
+        "toEmail": "RECIPIENT_EMAIL@example.com",
+        "subject": "Daily AI & Technology Intelligence Report",
+        "html": "={{ $('Basic LLM Chain').first().json.text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1344,
+        32
+      ],
+      "id": "01939c4f-d9dc-407f-9e14-6ca7a78672f0",
+      "name": "Send an Email",
+      "webhookId": "REDACTED",
+      "credentials": {
+        "smtp": {
+          "id": "REDACTED",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read4",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read5",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read6",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read7",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read8",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "RSS Read3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "RSS Read4": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "RSS Read5": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "RSS Read6": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "RSS Read7": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 7
+          }
+        ]
+      ]
+    },
+    "RSS Read8": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 8
+          }
+        ]
+      ]
+    },
+    "RSS Read9": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 9
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cea06de9-6293-46d5-a874-8a58eb8f8487",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "J7dbm8Rx6FqWzdZl",
+  "tags": []
+}
